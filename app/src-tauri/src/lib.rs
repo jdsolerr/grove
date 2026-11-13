@@ -1185,16 +1185,19 @@ pub struct AiSettings {
     has_key: bool,
 }
 
-#[tauri::command]
+// `async`: fuera del hilo principal. El llavero de macOS puede tardar segundos en frío (o esperar el
+// diálogo de permiso) y en el hilo principal congelaba la ventana al arrancar.
+#[tauri::command(async)]
 #[specta::specta]
 fn ai_settings(db: tauri::State<Db>) -> Result<AiSettings, String> {
+    let has_key = grove_ai::load_key().is_some(); // antes del lock: no bloquear la DB mientras responde el llavero
     let db = db.lock().unwrap();
     let get = |k| db.get(k).map_err(|e| e.to_string());
-    Ok(AiSettings { base_url: get("ai_base_url")?, model: get("ai_model")?, has_key: grove_ai::load_key().is_some() })
+    Ok(AiSettings { base_url: get("ai_base_url")?, model: get("ai_model")?, has_key })
 }
 
 /// URL vacía = IA apagada. `key`: `None` conserva la guardada, `Some("")` la borra.
-#[tauri::command]
+#[tauri::command(async)] // escribe en el llavero: fuera del hilo principal
 #[specta::specta]
 fn set_ai_settings(db: tauri::State<Db>, base_url: String, model: String, key: Option<String>) -> Result<(), String> {
     let (base_url, model) = (base_url.trim(), model.trim());

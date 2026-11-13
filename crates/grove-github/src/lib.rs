@@ -402,17 +402,35 @@ fn entry() -> Result<keyring::Entry> {
     Ok(keyring::Entry::new("grove", "github.com")?)
 }
 
+// Caché en memoria: el token se pide en cada fetch/push/PR y el llavero de macOS puede tardar segundos en frío.
+// `None` = aún no leído; `Some(None)` = no hay sesión.
+static TOKEN: std::sync::Mutex<Option<Option<String>>> = std::sync::Mutex::new(None);
+
 pub fn save_token(token: &str) -> Result<()> {
-    Ok(entry()?.set_password(token)?)
+    entry()?.set_password(token)?;
+    *TOKEN.lock().unwrap() = Some(Some(token.into()));
+    Ok(())
 }
 
+/// El lock se mantiene durante la lectura: los primeros pedidos simultáneos esperan una sola consulta al llavero.
 pub fn load_token() -> Option<String> {
-    entry().ok()?.get_password().ok()
+    let mut c = TOKEN.lock().unwrap();
+    if c.is_none() {
+        match entry().ok()?.get_password() {
+            Ok(t) => *c = Some(Some(t)),
+            Err(keyring::Error::NoEntry) => *c = Some(None),
+            Err(_) => return None, // llavero bloqueado o permiso denegado: se reintenta en la próxima llamada
+        }
+    }
+    c.clone().flatten()
 }
 
 pub fn logout() -> Result<()> {
     match entry()?.delete_credential() {
-        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Ok(()) | Err(keyring::Error::NoEntry) => {
+            *TOKEN.lock().unwrap() = Some(None);
+            Ok(())
+        }
         Err(e) => Err(e.into()),
     }
 }

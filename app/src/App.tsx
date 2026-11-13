@@ -393,7 +393,8 @@ export default function App() {
   createEffect(on([fAuthor, fSince, fUntil, fSearch, fFile, fRev, fOnlyNew], () => { setSel(undefined); refHistory(); }, { defer: true }));
 
   // ---- Cuenta de GitHub (OAuth device flow) ----
-  const [ghUser, setGhUser] = createSignal<{ login: string; avatar_url: string } | null>(null);
+  // undefined = aún consultando el llavero (puede tardar segundos en frío): no ofrecer login hasta saber que no hay sesión.
+  const [ghUser, setGhUser] = createSignal<{ login: string; avatar_url: string } | null>();
   const [ghCode, setGhCode] = createSignal<{ user_code: string; verification_uri: string }>();
   let loginRun = 0; // invalida un sondeo en curso al cancelar
   createEffect(() => setGhUserNow(!!ghUser()));
@@ -754,7 +755,9 @@ export default function App() {
   const [sync, { refetch: refSync }] = createResource(cur, (p) => commands.syncState(p).catch(() => undefined));
   // Último commit aún sin subir (como GitHub Desktop): sigue visible al reabrir la app para poder deshacerlo o editarlo.
   const [lastMsg] = createResource(() => (cur() && (sync()?.ahead ?? 0) > 0 ? ([cur()!, sync()] as const) : undefined), ([p]) => commands.lastMessage(p));
-  const unpushed = () => justCommitted() ?? ((sync()?.ahead ?? 0) > 0 ? lastMsg()?.summary : undefined);
+  // Ya subido (por cualquier camino: push, publicar rama, crear PR): deja de ofrecer editar/deshacer ese commit.
+  createEffect(on(sync, (s) => { if (s?.upstream && !s.ahead) setJustCommitted(undefined); }, { defer: true }));
+  const unpushed = () => justCommitted() ??((sync()?.ahead ?? 0) > 0 ? lastMsg()?.summary : undefined);
   // Un solo botón, como GitHub Desktop: publica, hace pull, push o fetch según el estado de la rama.
   const syncAct = () => {
     const s = sync();
@@ -1397,7 +1400,7 @@ export default function App() {
               <Show when={!shown().length}><p class="muted">Sin repositorios</p></Show>
             </div>
             <div class="fopt acct">
-              <Show when={ghUser()} fallback={<button class="btn" onClick={ghLogin} disabled={!!ghCode()}>Iniciar sesión con GitHub</button>}>
+              <Show when={ghUser()} fallback={ghUser() === null && <button class="btn" onClick={ghLogin} disabled={!!ghCode()}>Iniciar sesión con GitHub</button>}>
                 {(u) => (<><img class="av" src={u().avatar_url} alt="" /><b class="grow ellip">{u().login}</b><button class="btn" onClick={ghLogout}>Cerrar sesión</button></>)}
               </Show>
             </div>
@@ -1513,7 +1516,7 @@ export default function App() {
             <span classList={{ on: cloning() === "url" }} onClick={() => setCloning("url")}>URL</span>
           </div>
           <Show when={cloning() === "gh"}>
-            <Show when={ghUser()} fallback={<p>Inicia sesión en GitHub para ver tus repositorios. <button class="btn" onClick={ghLogin} disabled={!!ghCode()}>Iniciar sesión</button></p>}>
+            <Show when={ghUser()} fallback={ghUser() === null && <p>Inicia sesión en GitHub para ver tus repositorios. <button class="btn" onClick={ghLogin} disabled={!!ghCode()}>Iniciar sesión</button></p>}>
               <div class="fsearch"><Icon name="search" /><input placeholder="Filtrar tus repositorios" value={cloneFilter()} onInput={(e) => setCloneFilter(e.currentTarget.value)} /></div>
               <div class="flist cl">
                 <Show when={ghRepos.loading}><p class="muted">Cargando…</p></Show>
@@ -1564,7 +1567,7 @@ export default function App() {
         <div class="scrim dim" onClick={() => !pubBusy() && setPubDlg(false)} />
         <div class="dialog">
           <h2>Publicar repositorio en GitHub</h2>
-          <Show when={ghUser()} fallback={<p>Inicia sesión en GitHub para publicar. <button class="btn" onClick={ghLogin} disabled={!!ghCode()}>Iniciar sesión</button></p>}>
+          <Show when={ghUser()} fallback={ghUser() === null && <p>Inicia sesión en GitHub para publicar. <button class="btn" onClick={ghLogin} disabled={!!ghCode()}>Iniciar sesión</button></p>}>
             <p>Se crea en tu cuenta ({ghUser()!.login}), se enlaza como <b>origin</b> y se sube la rama actual.</p>
             <label class="lbl">Nombre<div class="fsearch"><input autofocus value={pubName()} onInput={(e) => setPubName(e.currentTarget.value)} /></div></label>
             <label class="lbl">Descripción<div class="fsearch"><input placeholder="Opcional" value={pubDesc()} onInput={(e) => setPubDesc(e.currentTarget.value)} /></div></label>
@@ -2056,7 +2059,7 @@ export default function App() {
       <Show when={err()}><div class="banner"><span class="banner-msg">
         <Show when={AUTH_ERR.test(err())} fallback={err()}>
           {ghUser() ? "GitHub rechazó las credenciales para este repositorio: tu cuenta puede no tener acceso o la sesión caducó. Cierra sesión y vuelve a iniciarla." : "Este repositorio necesita iniciar sesión en GitHub para sincronizar (fetch, pull y push)."}
-          <Show when={!ghUser()}><button class="btn" onClick={() => { setErr(""); ghLogin(); }} disabled={!!ghCode()}>Iniciar sesión</button></Show>
+          <Show when={ghUser() === null}><button class="btn" onClick={() => { setErr(""); ghLogin(); }} disabled={!!ghCode()}>Iniciar sesión</button></Show>
         </Show></span>
         <button class="x" onClick={() => setErr("")}><Icon name="x" size={14} /></button></div></Show>
 
@@ -2082,7 +2085,7 @@ export default function App() {
             </nav>
 
             <Show when={tab() === "prs"}>
-              <Show when={ghUser()} fallback={<div class="empty-side"><p>Inicia sesión en GitHub para ver y crear Pull Requests.</p><button class="btn primary" onClick={ghLogin} disabled={!!ghCode()}>Iniciar sesión</button></div>}>
+              <Show when={ghUser()} fallback={ghUser() === null && <div class="empty-side"><p>Inicia sesión en GitHub para ver y crear Pull Requests.</p><button class="btn primary" onClick={ghLogin} disabled={!!ghCode()}>Iniciar sesión</button></div>}>
                 <div class="hfilter">
                   <select value={prState()} onChange={(e) => setPrState(e.currentTarget.value as "open" | "closed" | "all")} title="Estado">
                     <option value="open">Abiertos</option><option value="closed">Cerrados</option><option value="all">Todos</option>
@@ -2461,7 +2464,7 @@ export default function App() {
                         </div>
                       </Show>
                       <div class="actions">
-                        <Show when={!ghUser()}>
+                        <Show when={ghUser() === null}>
                           <div class="act">
                             <div><b>Inicia sesión en GitHub</b><small>Para ver las fotos de los autores y, más adelante, hacer push, pull y abrir Pull Requests</small></div>
                             <button class="btn primary" onClick={ghLogin} disabled={!!ghCode()}>Iniciar sesión</button>
