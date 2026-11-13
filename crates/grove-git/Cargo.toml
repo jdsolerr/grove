@@ -1,0 +1,9 @@
+[package]
+name = "grove-git"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.104"
+base64 = "0.23"
+gix = { version = "0.90.0", features = ["status", "parallel", "blob-diff"] }

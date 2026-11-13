@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <title>Grove</title>
+    <!-- Fondo desde el primer pintado (mismo --bg del tema), para que no haya destello blanco. -->
+    <style>
+      html { background: #f6f8f6; color-scheme: light dark; }
+      @media (prefers-color-scheme: dark) { html { background: #0f131b; } }
+    </style>
+  </head>
+
+  <body>
+    <noscript>Grove necesita JavaScript.</noscript>
+    <div id="root"></div>
+
+    <script src="/src/index.tsx" type="module"></script>
+  </body>
+</html>

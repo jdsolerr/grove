@@ -1,0 +1,9 @@
+/target
+/fixtures/out
+/app/node_modules
+/app/dist
+.DS_Store
+.env
+
+# Scripts locales (contienen configuración propia, no se publican)
+/local-scripts

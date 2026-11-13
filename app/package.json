@@ -1,0 +1,28 @@
+{
+  "name": "grove",
+  "version": "0.1.0",
+  "description": "Cliente Git de escritorio",
+  "type": "module",
+  "scripts": {
+    "start": "vite",
+    "dev": "vite",
+    "build": "vite build",
+    "serve": "vite preview",
+    "tauri": "tauri"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@tanstack/solid-virtual": "^3.13.53",
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-dialog": "^2.8.4",
+    "@tauri-apps/plugin-opener": "^2",
+    "lucide-solid": "^1.72.0",
+    "solid-js": "^1.9.3"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "typescript": "^7.0.2",
+    "vite": "^8.0.16",
+    "vite-plugin-solid": "^2.11.12"
+  }
+}
