@@ -19,7 +19,29 @@ pub struct DeviceCode {
 pub enum Poll {
     Pending,
     SlowDown,
-    Done(String),
+    Done(Session),
+}
+
+/// Lo que se guarda en el llavero. `refresh`/`expires_at` solo existen si la app de GitHub tiene tokens con expiración.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct Session {
+    pub access: String,
+    pub refresh: Option<String>,
+    pub expires_at: Option<u64>,
+    pub client_id: String,
+}
+
+fn now() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
+}
+
+fn session_from(r: &serde_json::Value, client_id: &str) -> Option<Session> {
+    Some(Session {
+        access: r["access_token"].as_str()?.into(),
+        refresh: r["refresh_token"].as_str().map(Into::into),
+        expires_at: r["expires_in"].as_u64().map(|e| now() + e),
+        client_id: client_id.into(),
+    })
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -61,12 +83,12 @@ pub fn device_poll(client_id: &str, device_code: &str) -> Result<Poll> {
         ])?
         .body_mut()
         .read_json::<serde_json::Value>()?;
-    parse_poll(&r)
+    parse_poll(&r, client_id)
 }
 
-fn parse_poll(r: &serde_json::Value) -> Result<Poll> {
-    if let Some(t) = r["access_token"].as_str() {
-        return Ok(Poll::Done(t.into()));
+fn parse_poll(r: &serde_json::Value, client_id: &str) -> Result<Poll> {
+    if let Some(s) = session_from(r, client_id) {
+        return Ok(Poll::Done(s));
     }
     match r["error"].as_str() {
         Some("authorization_pending") => Ok(Poll::Pending),
@@ -404,25 +426,60 @@ fn entry() -> Result<keyring::Entry> {
 
 // Caché en memoria: el token se pide en cada fetch/push/PR y el llavero de macOS puede tardar segundos en frío.
 // `None` = aún no leído; `Some(None)` = no hay sesión.
-static TOKEN: std::sync::Mutex<Option<Option<String>>> = std::sync::Mutex::new(None);
+static TOKEN: std::sync::Mutex<Option<Option<Session>>> = std::sync::Mutex::new(None);
 
-pub fn save_token(token: &str) -> Result<()> {
-    entry()?.set_password(token)?;
-    *TOKEN.lock().unwrap() = Some(Some(token.into()));
+pub fn save_session(s: &Session) -> Result<()> {
+    entry()?.set_password(&serde_json::to_string(s)?)?;
+    *TOKEN.lock().unwrap() = Some(Some(s.clone()));
     Ok(())
 }
 
-/// El lock se mantiene durante la lectura: los primeros pedidos simultáneos esperan una sola consulta al llavero.
+/// Renueva con el refresh token. GitHub lo rota: el nuevo refresh token reemplaza al anterior y hay que guardarlo.
+fn refresh(s: &Session, refresh_token: &str) -> Result<Session> {
+    let r = agent()
+        .post(format!("{HOST}/login/oauth/access_token"))
+        .header("Accept", "application/json")
+        .send_form([("client_id", s.client_id.as_str()), ("grant_type", "refresh_token"), ("refresh_token", refresh_token)])
+        .context("sin conexión con GitHub")?
+        .body_mut()
+        .read_json::<serde_json::Value>()?;
+    match session_from(&r, &s.client_id) {
+        Some(n) => Ok(n),
+        None => bail!("sesión expirada: {}", r["error"].as_str().unwrap_or("respuesta inesperada")),
+    }
+}
+
+/// El lock se mantiene durante la lectura y la renovación: los pedidos simultáneos esperan una sola vez.
 pub fn load_token() -> Option<String> {
     let mut c = TOKEN.lock().unwrap();
     if c.is_none() {
         match entry().ok()?.get_password() {
-            Ok(t) => *c = Some(Some(t)),
+            // Un valor que no es JSON es un token de versiones anteriores: sin expiración conocida.
+            Ok(t) => *c = Some(Some(serde_json::from_str(&t).unwrap_or(Session { access: t, refresh: None, expires_at: None, client_id: String::new() }))),
             Err(keyring::Error::NoEntry) => *c = Some(None),
             Err(_) => return None, // llavero bloqueado o permiso denegado: se reintenta en la próxima llamada
         }
     }
-    c.clone().flatten()
+    let s = c.clone().flatten()?;
+    if let (Some(exp), Some(rt)) = (s.expires_at, s.refresh.as_deref()) {
+        if exp <= now() + 60 {
+            match refresh(&s, rt) {
+                Ok(n) => {
+                    let _ = entry().and_then(|e| Ok(e.set_password(&serde_json::to_string(&n)?)?));
+                    *c = Some(Some(n.clone()));
+                    return Some(n.access);
+                }
+                // Sin red se devuelve el token vencido y se reintenta luego; un rechazo real cierra la sesión.
+                Err(e) if e.to_string().starts_with("sesión expirada") => {
+                    let _ = entry().map(|e| e.delete_credential());
+                    *c = Some(None);
+                    return None;
+                }
+                Err(_) => {}
+            }
+        }
+    }
+    Some(s.access)
 }
 
 pub fn logout() -> Result<()> {
@@ -465,10 +522,10 @@ mod tests {
 
     #[test]
     fn poll_states() {
-        assert_eq!(parse_poll(&json!({"error":"authorization_pending"})).unwrap(), Poll::Pending);
-        assert_eq!(parse_poll(&json!({"error":"slow_down"})).unwrap(), Poll::SlowDown);
-        assert_eq!(parse_poll(&json!({"access_token":"t"})).unwrap(), Poll::Done("t".into()));
-        assert!(parse_poll(&json!({"error":"expired_token"})).is_err());
-        assert!(parse_poll(&json!({"error":"access_denied"})).is_err());
+        assert_eq!(parse_poll(&json!({"error":"authorization_pending"}), "c").unwrap(), Poll::Pending);
+        assert_eq!(parse_poll(&json!({"error":"slow_down"}), "c").unwrap(), Poll::SlowDown);
+        assert_eq!(parse_poll(&json!({"access_token":"t","refresh_token":"r","expires_in":10}), "c").unwrap(), Poll::Done(Session { access: "t".into(), refresh: Some("r".into()), expires_at: Some(now() + 10), client_id: "c".into() }));
+        assert!(parse_poll(&json!({"error":"expired_token"}), "c").is_err());
+        assert!(parse_poll(&json!({"error":"access_denied"}), "c").is_err());
     }
 }

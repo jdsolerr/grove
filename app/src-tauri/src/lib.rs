@@ -223,8 +223,8 @@ async fn gh_login_poll(device_code: String) -> Result<GhPoll, String> {
             grove_github::Poll::Pending => GhPoll { status: "pending".into(), user: None },
             grove_github::Poll::SlowDown => GhPoll { status: "slow".into(), user: None },
             grove_github::Poll::Done(t) => {
-                let u = grove_github::user(&t)?;
-                grove_github::save_token(&t)?;
+                let u = grove_github::user(&t.access)?;
+                grove_github::save_session(&t)?;
                 GhPoll { status: "done".into(), user: Some(gh_user_dto(u)) }
             }
         })
