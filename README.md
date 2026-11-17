@@ -21,6 +21,7 @@ con tus repositorios organizados en grupos y mensajes de commit asistidos por IA
 ## Contenido
 
 - [¿Por qué Grove?](#por-qué-grove)
+- [Capturas](#capturas)
 - [Funciones](#funciones)
 - [Primeros pasos](#primeros-pasos)
 - [Mensajes de commit con IA](#mensajes-de-commit-con-ia)
@@ -39,6 +40,42 @@ con tus repositorios organizados en grupos y mensajes de commit asistidos por IA
 - **Organizado.** Agrupa repositorios por cliente, equipo o proyecto (arrastrando o desde el menú) y ponles alias.
 - **Familiar.** La disposición (barra superior, lista a la izquierda, detalle a la derecha) resulta natural si vienes de otros clientes Git de escritorio, con identidad visual propia en tema claro y oscuro.
 - **En español.** Interfaz y mensajes en español.
+
+---
+
+## Capturas
+
+Se adaptan al tema claro u oscuro de tu GitHub.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="screenshots/inicio-dark.png">
+  <img src="screenshots/inicio-light.png" alt="Inicio: repositorios por grupos" width="100%">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="screenshots/cambios-dark.png">
+  <img src="screenshots/cambios-light.png" alt="Cambios y commit" width="100%">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="screenshots/historial-dark.png">
+  <img src="screenshots/historial-light.png" alt="Historial" width="100%">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="screenshots/ramas-dark.png">
+  <img src="screenshots/ramas-light.png" alt="Ramas" width="100%">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="screenshots/conflictos-dark.png">
+  <img src="screenshots/conflictos-light.png" alt="Resolución de conflictos" width="100%">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="screenshots/paleta-dark.png">
+  <img src="screenshots/paleta-light.png" alt="Paleta de comandos" width="100%">
+</picture>
 
 ---
 
